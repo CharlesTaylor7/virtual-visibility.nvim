@@ -2,6 +2,10 @@ local M = {}
 function M.setup()
   local visibilities = { "internal", "public", "protected", "private" }
 
+  local augroup = vim.api.nvim_create_augroup("virtual-visibility", {})
+
+  local ns = vim.api.nvim_create_namespace("virtual-visibility")
+
   ---@param node TSNode
   local function has_explicit_visibility(node)
     return vim.iter(node:iter_children()):any(function(child)
@@ -15,7 +19,6 @@ function M.setup()
   end
 
   local function show_virtual_visibility()
-    local ns = vim.api.nvim_create_namespace("virtual-visibility")
     vim.api.nvim_buf_clear_namespace(0, ns, 0, -1)
     vim.api.nvim_set_hl_ns(ns)
     vim.api.nvim_set_hl(ns, "VirtualVisibility", { fg = 13346551, bg = "black" })
@@ -84,10 +87,9 @@ function M.setup()
   end
 
   vim.api.nvim_create_autocmd("BufWritePost", {
-    group = vim.api.nvim_create_augroup("virtual-visibility", {}),
-    buffer = 0,
+    group = augroup,
+    pattern = "*.cs",
     callback = show_virtual_visibility,
   })
-  show_virtual_visibility()
 end
 return M

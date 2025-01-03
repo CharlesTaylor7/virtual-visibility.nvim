@@ -1,9 +1,9 @@
 local M = {}
 function M.setup()
+  vim.print("hello from virtual")
+  vim.print(vim.bo.filetype)
   local visibilities = { "internal", "public", "protected", "private" }
-
   local augroup = vim.api.nvim_create_augroup("virtual-visibility", {})
-
   local ns = vim.api.nvim_create_namespace("virtual-visibility")
 
   ---@param node TSNode
@@ -86,10 +86,16 @@ function M.setup()
     end
   end
 
+  if vim.bo.filetype == "cs" then
+    show_virtual_visibility()
+  end
   vim.api.nvim_create_autocmd("BufWritePost", {
     group = augroup,
-    pattern = "*.cs",
-    callback = show_virtual_visibility,
+    --pattern = "*.cs",
+    callback = function(args)
+      vim.print(args)
+      show_virtual_visibility()
+    end,
   })
 end
 return M

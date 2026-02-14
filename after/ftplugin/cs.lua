@@ -1,4 +1,7 @@
 local visibilities = { "internal", "public", "protected", "private", "file" }
+local ns = vim.api.nvim_create_namespace("csharp:virtual-text")
+vim.api.nvim_set_hl_ns(ns)
+vim.api.nvim_set_hl(ns, "VirtualVisibility", { fg = 13346551, bg = "black" })
 
 ---@param node TSNode
 local function has_explicit_visibility(node)
@@ -6,6 +9,7 @@ local function has_explicit_visibility(node)
     if child:type() ~= "modifier" then
       return false
     end
+
     local a, b, c, d = child:range()
     local modifier = vim.api.nvim_buf_get_text(0, a, b, c, d, {})[1]
     return vim.tbl_contains(visibilities, modifier)
@@ -16,24 +20,36 @@ local function get_root_node(lang, bufnr)
   return vim.treesitter.get_parser(bufnr or 0, lang):parse()[1]:root()
 end
 
+local function apply_visibility(doc, query, visibility)
+  for id, node, meta, match in query:iter_captures(doc, 0) do
+    if not has_explicit_visibility(node) then
+      local first_non_attribute_child = vim.iter(node:iter_children()):find(function(child)
+        return child:type() ~= "attribute_list"
+      end)
+
+      if first_non_attribute_child == nil then
+        vim.print({ node:type(), "nil" })
+      end
+      local a, b, _, _ = first_non_attribute_child:range()
+
+      vim.api.nvim_buf_set_extmark(0, ns, a, b, {
+        right_gravity = false,
+        virt_text_pos = "inline",
+        virt_text = { { visibility, "VirtualVisibility" }, { " " } },
+      })
+    end
+  end
+end
+
 local function show_virtual_visibility()
-  local ns = vim.api.nvim_create_namespace("csharp:virtual-text")
+  vim.print("reapply virtual visibility")
   vim.api.nvim_buf_clear_namespace(0, ns, 0, -1)
-  vim.api.nvim_set_hl_ns(ns)
-  vim.api.nvim_set_hl(ns, "VirtualVisibility", { fg = 13346551, bg = "black" })
 
   local doc = get_root_node("c_sharp")
 
   local query_local_functions = vim.treesitter.query.parse("c_sharp", [[ (local_function_statement) @local ]])
 
-  for id, node, meta, match in query_local_functions:iter_captures(doc, 0) do
-    local a, b, c, d = node:range()
-    vim.api.nvim_buf_set_extmark(0, ns, a, b, {
-      right_gravity = false,
-      virt_text_pos = "inline",
-      virt_text = { { "local", "VirtualVisibility" }, { " " } },
-    })
-  end
+  apply_visibility(doc, query_local_functions, "local")
 
   local query_members = vim.treesitter.query.parse(
     "c_sharp",
@@ -48,17 +64,22 @@ local function show_virtual_visibility()
   )
   for id, node, meta, match in query_members:iter_captures(doc, 0) do
     if not has_explicit_visibility(node) then
-      local visibility = "private"
-      if node:parent():parent():type() == "interface_declaration" then
+      local visibility
+      local is_explicit_interface_implementation = vim.iter(node:iter_children()):any(function(child)
+        return child:type() == "explicit_interface_specifier"
+      end)
+
+      if is_explicit_interface_implementation then
+        visibility = "interface"
+      elseif node:parent():parent():type() == "interface_declaration" then
         visibility = "public"
+      else
+        visibility = "private"
       end
 
       local first_non_attribute_child = vim.iter(node:iter_children()):find(function(child)
         return child:type() ~= "attribute_list"
       end)
-      if first_non_attribute_child == nil then
-        break
-      end
 
       local a, b, _, _ = first_non_attribute_child:range()
 
@@ -80,27 +101,12 @@ local function show_virtual_visibility()
             (record_declaration)
             (enum_declaration)
             (delegate_declaration)
+            (event_declaration)
         ] @type
     ]]
   )
 
-  for id, node, meta, match in query_internal_types:iter_captures(doc, 0) do
-    if not has_explicit_visibility(node) then
-      local first_non_attribute_child = vim.iter(node:iter_children()):find(function(child)
-        return child:type() ~= "attribute_list"
-      end)
-      if first_non_attribute_child == nil then
-        break
-      end
-
-      local a, b, _, _ = first_non_attribute_child:range()
-      vim.api.nvim_buf_set_extmark(0, ns, a, b, {
-        right_gravity = false,
-        virt_text_pos = "inline",
-        virt_text = { { "internal", "VirtualVisibility" }, { " " } },
-      })
-    end
-  end
+  apply_visibility(doc, query_internal_types, "internal")
 
   local query_constructors = vim.treesitter.query.parse(
     "c_sharp",
@@ -108,23 +114,8 @@ local function show_virtual_visibility()
         (constructor_declaration) @method
     ]]
   )
-  for id, node, meta, match in query_constructors:iter_captures(doc, 0) do
-    if not has_explicit_visibility(node) then
-      local first_non_attribute_child = vim.iter(node:iter_children()):find(function(child)
-        return child:type() ~= "attribute_list"
-      end)
-      if first_non_attribute_child == nil then
-        break
-      end
-      local a, b, _, _ = first_non_attribute_child:range()
 
-      vim.api.nvim_buf_set_extmark(0, ns, a, b, {
-        right_gravity = false,
-        virt_text_pos = "inline",
-        virt_text = { { "public", "VirtualVisibility" }, { " " } },
-      })
-    end
-  end
+  apply_visibility(doc, query_constructors, "public")
 end
 
 vim.api.nvim_create_autocmd("BufWritePost", {

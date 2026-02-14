@@ -1,7 +1,7 @@
 public interface IFoo
 {
     int GetAge();
-    public event Event Event;
+    event Event Event;
 }
 
 public class Foo : IFoo

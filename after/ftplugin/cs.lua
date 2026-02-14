@@ -20,6 +20,9 @@ local function get_root_node(lang, bufnr)
   return vim.treesitter.get_parser(bufnr or 0, lang):parse()[1]:root()
 end
 
+---@param doc TSNode
+---@param query vim.treesitter.Query
+---@param visibility string | function
 local function apply_visibility(doc, query, visibility)
   for id, node, meta, match in query:iter_captures(doc, 0) do
     if not has_explicit_visibility(node) then
@@ -27,15 +30,18 @@ local function apply_visibility(doc, query, visibility)
         return child:type() ~= "attribute_list"
       end)
 
-      if first_non_attribute_child == nil then
-        vim.print({ node:type(), "nil" })
-      end
       local a, b, _, _ = first_non_attribute_child:range()
 
+      local vis
+      if type(visibility) == "string" then
+        vis = visibility
+      else
+        vis = visibility(node)
+      end
       vim.api.nvim_buf_set_extmark(0, ns, a, b, {
         right_gravity = false,
         virt_text_pos = "inline",
-        virt_text = { { visibility, "VirtualVisibility" }, { " " } },
+        virt_text = { { vis, "VirtualVisibility" }, { " " } },
       })
     end
   end
@@ -62,34 +68,21 @@ local function show_virtual_visibility()
         ] @member
     ]]
   )
-  for id, node, meta, match in query_members:iter_captures(doc, 0) do
-    if not has_explicit_visibility(node) then
-      local visibility
-      local is_explicit_interface_implementation = vim.iter(node:iter_children()):any(function(child)
-        return child:type() == "explicit_interface_specifier"
-      end)
 
-      if is_explicit_interface_implementation then
-        visibility = "interface"
-      elseif node:parent():parent():type() == "interface_declaration" then
-        visibility = "public"
-      else
-        visibility = "private"
-      end
+  apply_visibility(doc, query_members, function(node)
+    local visibility
+    local is_explicit_interface_implementation = vim.iter(node:iter_children()):any(function(child)
+      return child:type() == "explicit_interface_specifier"
+    end)
 
-      local first_non_attribute_child = vim.iter(node:iter_children()):find(function(child)
-        return child:type() ~= "attribute_list"
-      end)
-
-      local a, b, _, _ = first_non_attribute_child:range()
-
-      vim.api.nvim_buf_set_extmark(0, ns, a, b, {
-        right_gravity = false,
-        virt_text_pos = "inline",
-        virt_text = { { visibility, "VirtualVisibility" }, { " " } },
-      })
+    if is_explicit_interface_implementation then
+      return "interface"
+    elseif node:parent():parent():type() == "interface_declaration" then
+      return "public"
+    else
+      return "private"
     end
-  end
+  end)
 
   local query_internal_types = vim.treesitter.query.parse(
     "c_sharp",

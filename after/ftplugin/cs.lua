@@ -48,7 +48,6 @@ local function apply_visibility(doc, query, visibility)
 end
 
 local function show_virtual_visibility()
-  vim.print("reapply virtual visibility")
   vim.api.nvim_buf_clear_namespace(0, ns, 0, -1)
 
   local doc = get_root_node("c_sharp")
